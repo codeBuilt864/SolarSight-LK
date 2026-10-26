@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SolarSight LK: operator view (simulated data)</title>
+<style>
+  :root { --bg:#f3f6f9; --card:#fff; --ink:#0b1f33; --muted:#5b6b7c; --solar:#f5a623; --demand:#12344d; --fc:#1b9aaa; --warn:#e4572e; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", Calibri, sans-serif; background:var(--bg); color:var(--ink); }
+  header { padding:20px 24px 4px; }
+  h1 { margin:0; font-size:24px; }
+  .banner { display:inline-block; margin-top:8px; padding:4px 10px; border-radius:999px; background:#fff3d6; color:#7a5200; font-size:13px; font-weight:600; }
+  main { padding:16px 24px 32px; display:grid; gap:16px; grid-template-columns: repeat(12, 1fr); }
+  .card { background:var(--card); border-radius:12px; padding:16px; box-shadow:0 1px 6px rgba(0,0,0,.08); }
+  .stat { grid-column: span 3; }
+  .stat .v { font-size:30px; font-weight:700; margin-top:4px; }
+  .stat .l { font-size:13px; color:var(--muted); }
+  .wide { grid-column: span 12; } .half { grid-column: span 6; }
+  h2 { margin:0 0 8px; font-size:16px; }
+  .note { font-size:12px; color:var(--muted); margin-top:6px; }
+  canvas { max-height: 300px; }
+  @media (max-width: 800px) { .stat { grid-column: span 6; } .half { grid-column: span 12; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>SolarSight LK <span style="font-weight:400;color:var(--muted)">operator view</span></h1>
+  <span class="banner">Research prototype: all data shown is SIMULATED</span>
+</header>
+<main>
+  <section class="card stat"><div class="l">Solar output now</div><div class="v" id="s-now">-</div></section>
+  <section class="card stat"><div class="l">Share of simulated demand</div><div class="v" id="s-share">-</div></section>
+  <section class="card stat"><div class="l">Installed capacity</div><div class="v" id="s-cap">-</div></section>
+  <section class="card stat"><div class="l">Baseline forecast error (last day)</div><div class="v" id="s-mae">-</div></section>
+
+  <section class="card wide">
+    <h2>Solar output vs simulated demand, last 48 hours</h2>
+    <canvas id="c-overview"></canvas>
+    <div class="note">Demand is an illustrative curve, not measured data.</div>
+  </section>
+  <section class="card half">
+    <h2>Next 24 hours: baseline forecast</h2>
+    <canvas id="c-forecast"></canvas>
+    <div class="note" id="fc-note"></div>
+  </section>
+  <section class="card half">
+    <h2>Output by district (latest reading)</h2>
+    <canvas id="c-districts"></canvas>
+    <div class="note">Shows how much of each district's installed capacity is producing now.</div>
+  </section>
+</main>
+<script src="/static/vendor/chart.umd.js"></script>
+<script>
+const LOCAL_OFFSET_MIN = 330; // Sri Lanka, UTC+05:30
+const hhmm = iso => { const d = new Date(new Date(iso).getTime() + LOCAL_OFFSET_MIN*60000);
+  return d.toISOString().slice(5,10) + ' ' + d.toISOString().slice(11,16); };
+const get = u => fetch(u).then(r => { if (!r.ok) throw new Error(u + ' ' + r.status); return r.json(); });
+const COL = { solar:'#f5a623', demand:'#12344d', fc:'#1b9aaa' };
+Chart.defaults.font.family = 'system-ui, Calibri, sans-serif';
+
+async function main() {
+  const [ov, ds] = await Promise.all([get('/api/overview'), get('/api/districts')]);
+  let fc = null;
+  try { fc = await get('/api/forecast'); } catch (e) { document.getElementById('fc-note').textContent = 'Forecast needs at least 2 days of history.'; }
+
+  const pts = ov.points, last = pts[pts.length - 1];
+  document.getElementById('s-now').textContent = last ? Math.round(last.solar_kw) + ' kW' : '-';
+  document.getElementById('s-share').textContent = last && last.solar_share != null ? Math.round(last.solar_share*100) + '%' : '-';
+  document.getElementById('s-cap').textContent = Math.round(ov.installed_kw) + ' kW';
+  if (fc && fc.evaluation_last_day) document.getElementById('s-mae').textContent = fc.evaluation_last_day.mae_kw + ' kW';
+
+  new Chart(document.getElementById('c-overview'), { type:'line',
+    data:{ labels: pts.map(p => hhmm(p.ts)), datasets:[
+      { label:'Solar output (kW)', data: pts.map(p => p.solar_kw), borderColor:COL.solar, backgroundColor:COL.solar, pointRadius:0, tension:.3, borderWidth:2.5 },
+      { label:'Simulated demand (kW)', data: pts.map(p => p.demand_kw_simulated), borderColor:COL.demand, backgroundColor:COL.demand, pointRadius:0, tension:.3, borderWidth:2.5 } ]},
+    options:{ responsive:true, interaction:{mode:'index', intersect:false}, scales:{ x:{ ticks:{ maxTicksLimit:10 } }, y:{ title:{display:true,text:'kW (sum of all sites)'} } } } });
+
+  if (fc) {
+    document.getElementById('fc-note').textContent = 'Method: ' + fc.method + '. This is the benchmark a better model must beat.';
+    new Chart(document.getElementById('c-forecast'), { type:'line',
+      data:{ labels: fc.points.map(p => hhmm(p.ts)), datasets:[
+        { label:'Forecast solar (kW)', data: fc.points.map(p => p.solar_kw_forecast), borderColor:COL.fc, backgroundColor:COL.fc, pointRadius:0, tension:.3, borderWidth:2.5 } ]},
+      options:{ responsive:true, scales:{ x:{ ticks:{ maxTicksLimit:8 } }, y:{ title:{display:true,text:'kW'} } } } });
+  }
+
+  new Chart(document.getElementById('c-districts'), { type:'bar',
+    data:{ labels: ds.districts.map(d => d.district), datasets:[
+      { label:'Installed (kW)', data: ds.districts.map(d => d.capacity_kw), backgroundColor:'#d7e0ea' },
+      { label:'Producing now (kW)', data: ds.districts.map(d => d.power_kw), backgroundColor:COL.solar } ]},
+    options:{ responsive:true, scales:{ y:{ title:{display:true,text:'kW'} } } } });
+}
+main().catch(e => { document.body.insertAdjacentHTML('beforeend', '<p style="padding:24px;color:#e4572e">Could not load data: ' + e.message + '. Did you run the simulator?</p>'); });
+</script>
+</body>
+</html>
