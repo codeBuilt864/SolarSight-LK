@@ -1,0 +1,131 @@
+Metadata-Version: 2.4
+Name: solarsight-lk
+Version: 0.1.0
+Summary: Research prototype: making distributed solar visible to a grid operator (simulated data).
+License: MIT
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: fastapi>=0.110
+Requires-Dist: uvicorn[standard]>=0.29
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0; extra == "dev"
+Requires-Dist: httpx>=0.27; extra == "dev"
+Dynamic: license-file
+
+# SolarSight LK
+
+**Helping Sri Lanka's power grid see its solar power.**
+
+> **Status: early research prototype (v0.1).** It runs end to end on **simulated data only**. It has not been tested with real inverters, a utility or real weather data. Nothing here is a claim about real-world performance.
+
+![Operator dashboard showing simulated data](docs/dashboard.png)
+
+## The problem
+
+Sri Lanka is adding solar quickly, but most rooftop solar is invisible to the grid operator.
+
+- On 17 October 2026 the national grid tripped and the whole country lost power for more than two hours. Excess solar generation was suspected ([AFP via The Star](https://www.thestar.com.my/aseanplus/aseanplus-news/2026/10/17/sri-lanka-suffers-nationwide-electricity-blackout)). Official investigation findings are still awaited.
+- The CEB has said that rooftop solar systems "cannot be seen or controlled" by its control centre, so when solar is high and demand is low it has to switch off large plants that provide grid stability ([Ada Derana, April 2025](https://adaderana.lk/news/107425)).
+- Without data, the tools left are blunt: asking owners to switch off, or ordering large systems offline.
+
+## The idea
+
+Make distributed solar **visible and forecastable**, so operators can act early and precisely instead of reacting late and broadly.
+
+1. **Read** each solar site's output.
+2. **Send** it securely to the cloud.
+3. **Collect and clean** the data.
+4. **Forecast** the next hours.
+5. **Show** operators a live view, and offer an open API for researchers.
+
+It relates to the theme of grids, storage and flexibility: you cannot manage what you cannot see; knowing where surplus appears shows where storage helps; forecasts let load shift to the right time.
+
+## What works today
+
+- [x] Simulator for 20 fictional solar sites in 5 districts, with a daily sun curve, cloud variation and an illustrative demand curve
+- [x] Ingest API with validation, idempotent writes and an optional API key
+- [x] SQLite storage
+- [x] Baseline next-24-hour forecast with a measured error on a held-out day
+- [x] Operator dashboard (works offline; Chart.js is bundled)
+- [x] Automated tests (16) and a CI workflow
+
+## What does not exist yet
+
+- [ ] Real device data. The simulator stands in for it.
+- [ ] MQTT ingestion with device certificates
+- [ ] Weather-aware forecasting
+- [ ] Cloud deployment as code (Terraform), Kubernetes and Prometheus monitoring
+- [ ] Any validation with a utility, regulator or site owners
+
+## Quick start
+
+Requires Python 3.10 or newer.
+
+```bash
+git clone https://github.com/<your-username>/solarsight-lk.git
+cd solarsight-lk
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"
+
+# 1. start the API and dashboard
+uvicorn solarsight.api:app --port 8000
+
+# 2. in a second terminal: load 7 days of simulated data
+python -m solarsight.simulator --api http://127.0.0.1:8000 --days 7
+
+# 3. open the dashboard
+#    http://127.0.0.1:8000        (API docs: /docs)
+```
+
+Run the tests:
+
+```bash
+pytest -q
+```
+
+Optional write protection: `export SOLARSIGHT_API_KEY=my-secret`, start the API, and give the simulator `--api-key my-secret`.
+
+## API
+
+| Method and path | Purpose |
+| --- | --- |
+| `POST /api/sites` | Create or update sites (id, district, capacity in kW) |
+| `POST /api/readings` | Ingest up to 5,000 readings (site id, UTC timestamp, power in kW) |
+| `GET /api/sites` | List sites |
+| `GET /api/overview` | Total solar output over time, plus a simulated demand curve |
+| `GET /api/districts` | Latest output and capacity per district |
+| `GET /api/forecast` | Baseline forecast for the next 24 hours with its measured error |
+| `GET /api/health` | Health check |
+
+## About the forecast
+
+The baseline predicts each half-hour as the average of the same time of day over previous days. On the **simulated** week it reports a mean absolute error of about 4.6% of mean output (this changes with the random seed and the simulated weather). That number says only that the pipeline and the evaluation work. It says **nothing** about real accuracy, because real clouds, outages and rooftop shading are not simulated. Its purpose is to be the benchmark that better, weather-aware models must beat.
+
+See [docs/architecture.md](docs/architecture.md) for the current and planned design and the data model.
+
+## Roadmap
+
+| Phase | Goal | Status |
+| --- | --- | --- |
+| 1. Simulate | Pipeline, API, dashboard and tests on simulated data | Done (this repo) |
+| 2. Build | MQTT ingestion, device certificates, infrastructure as code, monitoring, weather-aware forecast | Planned |
+| 3. Pilot | One partner site, under expert guidance, measuring latency, data completeness and forecast error | Planned, needs a partner and clear data-sharing terms |
+
+## Responsible design
+
+- **Privacy:** household-level data is personal. Any shared view should be aggregated and anonymised.
+- **Security:** devices should authenticate with certificates, traffic should be encrypted, and access should follow least privilege. The API key here is only a placeholder.
+- **Ownership:** a real pilot needs agreements with site owners, the utility and the regulator.
+
+## Feedback welcome
+
+This is a student research proposal. I would value advice from grid operators, researchers and storage and flexibility practitioners. Please open an issue or get in touch.
+
+**Author:** R.M. Yaaseer, BICT student, Rajarata University of Sri Lanka
+**Contact:** yaseermhdofficial01@gmail.com
+
+## Licence
+
+MIT. See [LICENSE](LICENSE). Chart.js (bundled) is MIT licensed; see `src/solarsight/static/vendor/chartjs-LICENSE.md`.
