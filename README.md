@@ -109,7 +109,7 @@ See [docs/architecture.md](docs/architecture.md) for the current and planned des
 This is a student research proposal. I would value advice from grid operators, researchers and storage and flexibility practitioners. Please open an issue or get in touch.
 
 **Author:** R.M. Yaaseer, BICT student, Rajarata University of Sri Lanka
-**Contact:** yaseermhdofficial01@gmail.com
+**Contact:** itt2022118@tec.rjt.ac.lk
 
 ## Licence
 
