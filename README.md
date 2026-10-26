@@ -43,29 +43,6 @@ It relates to the theme of grids, storage and flexibility: you cannot manage wha
 - [ ] Cloud deployment as code (Terraform), Kubernetes and Prometheus monitoring
 - [ ] Any validation with a utility, regulator or site owners
 
-## Quick start
-
-Requires Python 3.10 or newer.
-
-```bash
-git clone https://github.com/<your-username>/solarsight-lk.git
-cd solarsight-lk
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
-
-# 1. start the API and dashboard
-uvicorn solarsight.api:app --port 8000
-
-# 2. in a second terminal: load 7 days of simulated data
-python -m solarsight.simulator --api http://127.0.0.1:8000 --days 7
-
-# 3. open the dashboard
-#    http://127.0.0.1:8000        (API docs: /docs)
-```
-
-Run the tests:
-
 ```bash
 pytest -q
 ```
